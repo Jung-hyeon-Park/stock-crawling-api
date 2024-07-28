@@ -24,6 +24,8 @@ import java.util.stream.IntStream;
 @Log4j2
 public class CrawlingService {
     private static final String URL = "https://finance.naver.com/item/sise_time.naver";
+    private static final int MAX_RETRIES = 3;
+    private static final int MAX_SIZE_THRESHOLD = 400;
 
     // 추후에 api로 조회하게 수정
     private static final String[] CODES = {
@@ -251,7 +253,7 @@ public class CrawlingService {
     };
 
     public void stockCrawling() {
-        LocalDateTime now = LocalDateTime.now().minusDays(1);
+        LocalDateTime now = LocalDateTime.now().minusDays(3);
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
         String nowStr = now.format(formatter) + "235959";
 
@@ -265,7 +267,7 @@ public class CrawlingService {
                 .flatMap(List::stream)
                 .collect(Collectors.toList());
 
-            System.out.println("allStockDtoList.size = " + allStockDtoList.size());
+            log.info("allStockDtoList.size : {}", allStockDtoList.size());
         } catch (Exception e) {
             log.error("stockCrawling error - {}", e.getMessage(), e);
         }
@@ -273,30 +275,50 @@ public class CrawlingService {
 
     private List<StockDto> crawling(String code, String thisTime) {
         List<StockDto> stockDtoList = new ArrayList<>();
+        int retries = 0;
 
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            List<Future<List<StockDto>>> pageFutures = IntStream.rangeClosed(1, 40)
-                .mapToObj(page -> {
-                    String url = URL + "?code=" + code + "&page=" + page + "&thistime=" + thisTime;
-                    return executor.submit(() -> fetchStockData(url));
-                })
-                .collect(Collectors.toList());
+        while (retries < MAX_RETRIES) {
+            stockDtoList.clear();
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                List<Future<List<StockDto>>> pageFutures = IntStream.rangeClosed(1, 40)
+                    .mapToObj(page -> {
+                        String url = URL + "?code=" + code + "&page=" + page + "&thistime=" + thisTime;
+                        return executor.submit(() -> fetchStockData(url));
+                    })
+                    .collect(Collectors.toList());
 
-            stockDtoList = pageFutures.stream()
-                .map(this::getFutureResult)
-                .flatMap(List::stream)
-                .collect(Collectors.toList());
+                stockDtoList = pageFutures.stream()
+                    .map(this::getFutureResult)
+                    .flatMap(List::stream)
+                    .collect(Collectors.toList());
 
-            System.out.println("stockDtoList.size = " + stockDtoList.size());
-        } catch (Exception e) {
-            log.error("crawling error - {}", e.getMessage(), e);
+                if (stockDtoList.size() == MAX_SIZE_THRESHOLD) break;
+
+                retries++;
+                log.warn("stockDtoList size is below threshold : {} ({}), retrying {}/{}", code, stockDtoList.size(), retries, MAX_RETRIES);
+                Thread.sleep(1000);
+            } catch (Exception e) {
+                log.error("crawling error - {}", e.getMessage(), e);
+                retries++;
+                if (retries >= MAX_RETRIES) {
+                    log.error("Max retries reached, aborting. : {}", code);
+                    break;
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
         }
 
+        log.info("stockDtoList.size : {} - {}",code, stockDtoList.size());
         return stockDtoList;
     }
 
     private List<StockDto> fetchStockData(String url) throws IOException {
-        Document doc = Jsoup.connect(url).get();
+        Document doc = fetchDocumentWithRetry(url, 3);
         Elements trElements = doc.select("table").get(0).select("tr");
 
         return trElements.stream()
@@ -305,6 +327,25 @@ public class CrawlingService {
             .map(this::parseTableRow)
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
+    }
+
+    private Document fetchDocumentWithRetry(String url, int maxRetries) throws IOException {
+        int attempt = 0;
+        while (attempt < maxRetries) {
+            try {
+                return Jsoup.connect(url).timeout(10000).get();
+            } catch (IOException e) {
+                attempt++;
+                if (attempt >= maxRetries) throw e;
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+        throw new IOException("Max retries exceeded for URL: " + url);
     }
 
     private StockDto parseTableRow(Element row) {
