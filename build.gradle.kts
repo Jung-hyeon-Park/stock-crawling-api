@@ -25,8 +25,13 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
     implementation("org.jsoup:jsoup:1.18.1")
+    implementation("org.seleniumhq.selenium:selenium-java:4.23.0")
+    implementation("org.seleniumhq.selenium:selenium-chrome-driver:4.23.0")
+
+    runtimeOnly("org.postgresql:postgresql:42.7.3")
 
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
