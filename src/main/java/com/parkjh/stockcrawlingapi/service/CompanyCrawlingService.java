@@ -3,25 +3,26 @@ package com.parkjh.stockcrawlingapi.service;
 import com.parkjh.stockcrawlingapi.dto.CompanyDto;
 import com.parkjh.stockcrawlingapi.enums.MarketType;
 import lombok.extern.log4j.Log4j2;
-import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 @Log4j2
 @Service
 public class CompanyCrawlingService implements CrawlingService<CompanyDto> {
 
     private static final String URL = "http://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201020101";
-    private static final int MAX_RETRIES = 3;
-    private static final int MAX_SIZE_THRESHOLD = 400;
+    private static final int MAX_RETRIES = 1;
 
     public void companyCrawling() {
         List<CompanyDto> allCompanyDtoList = crawling(Map.of());
@@ -38,8 +39,6 @@ public class CompanyCrawlingService implements CrawlingService<CompanyDto> {
             try {
                 String url = buildUrlWithQueryParams(URL, queryParams);
                 companyDtoList = fetchCompanyData(url);
-
-//                if (companyDtoList.size() == MAX_SIZE_THRESHOLD) break;
 
                 retries++;
                 log.warn("companyDtoList size is below threshold : ({}), retrying {}/{}", companyDtoList.size(), retries, MAX_RETRIES);
@@ -64,26 +63,40 @@ public class CompanyCrawlingService implements CrawlingService<CompanyDto> {
         return companyDtoList;
     }
 
-    private List<CompanyDto> fetchCompanyData(String url) throws IOException {
-        Document doc = fetchDocumentWithRetry(url, 3);
-        Elements trElements = doc.select("div");
+    private List<CompanyDto> fetchCompanyData(String url) {
+        WebDriver webDriver = fetchWebDriver(url);
+        List<CompanyDto> companyDtoList = new ArrayList<>();
 
-        System.setProperty("webdriver.chrome.driver", "path/to/chromedriver");
+        try {
+            WebDriverWait wait = new WebDriverWait(webDriver, Duration.ofSeconds(10));
+            wait.until(ExpectedConditions.jsReturnsValue("return document.readyState === 'complete';"));
 
-        System.out.println("trElements = " + trElements.text());
+            WebElement table = wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("tbody.CI-GRID-BODY-TABLE-TBODY")));
 
-        for (Element trElement : trElements) {
-            // CI-GRID-BODY-TABLE
-            System.out.println(trElement.text());
+            // todo 화면 스크롤 필요
+
+            for (WebElement tr : table.findElements(By.tagName("tr"))) {
+                List<WebElement> tds = tr.findElements(By.tagName("td"));
+                if (!tds.isEmpty() && tds.get(0) != null && !tds.get(0).getText().isEmpty()) {
+                    System.out.println("tds.get(1).getText() = " + tds.get(1).getText());
+
+                    companyDtoList.add(
+                        CompanyDto.builder()
+                            .companyCode(tds.get(0).getText())
+                            .companyName(tds.get(1).getText())
+                            .marketType(MarketType.fromString(tds.get(2).getText()))
+                            .build()
+                    );
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("fetchCompanyData - {}", url, e);
+        } finally {
+            webDriver.quit();
         }
-//        Elements trElements = doc.select("table").get(0).select("tr");
 
-        return trElements.stream()
-            .skip(1)
-            .filter(element -> element.text() != null && !element.text().isEmpty())
-            .map(this::parseTableRow)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toList());
+        return companyDtoList;
     }
 
     private CompanyDto parseTableRow(Element row) {

@@ -1,44 +1,23 @@
 package com.parkjh.stockcrawlingapi.service;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
+import io.github.bonigarcia.wdm.WebDriverManager;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
 
-import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Future;
 
 public interface CrawlingService<T> {
 
-    default Document fetchDocumentWithRetry(String url, int maxRetries) throws IOException {
-        int attempt = 0;
-        while (attempt < maxRetries) {
-            try {
-                return Jsoup.connect(url).timeout(10000).get();
-            } catch (IOException e) {
-                attempt++;
-                if (attempt >= maxRetries) throw e;
+    default WebDriver fetchWebDriver(String url) {
+        WebDriverManager.chromedriver().driverVersion("127.0.6533.73").setup();
+        WebDriver driver = new ChromeDriver();
+        driver.get(url);
 
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-        throw new IOException("Max retries exceeded for URL: " + url);
+        return driver;
     }
 
-    default List<T> getFutureResult(Future<List<T>> future) {
-        try {
-            return future.get();
-        } catch (Exception e) {
-            return new ArrayList<>();
-        }
-    }
-
-    public List<T> crawling(Map<String, String> queryParam);
+    List<T> crawling(Map<String, String> queryParam);
 
     default String buildUrlWithQueryParams(String baseUrl, Map<String, String> queryParams) {
         StringBuilder urlBuilder = new StringBuilder(baseUrl);
