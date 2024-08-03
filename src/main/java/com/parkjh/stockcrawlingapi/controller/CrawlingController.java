@@ -1,6 +1,6 @@
 package com.parkjh.stockcrawlingapi.controller;
 
-import com.parkjh.stockcrawlingapi.service.CompanyCrawlingService;
+import com.parkjh.stockcrawlingapi.service.CompanyService;
 import com.parkjh.stockcrawlingapi.service.StockCrawlingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,12 +10,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class CrawlingController {
 
-    private final CompanyCrawlingService companyCrawlingService;
+    private final CompanyService companyService;
     private final StockCrawlingService stockCrawlingService;
 
     @GetMapping("/")
     public void test() {
-        this.companyCrawlingService.companyCrawling();
+        this.companyService.save();
     }
 
     @GetMapping("/2")
