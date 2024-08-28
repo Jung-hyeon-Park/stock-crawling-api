@@ -3,8 +3,12 @@ package com.parkjh.stockcrawlingapi.service;
 import com.parkjh.stockcrawlingapi.dto.ApisDataDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.UnknownContentTypeException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
@@ -55,7 +59,8 @@ public class CompanyService {
     }
 
     private List<ApisDataDto> fetchAllPages(int totalPages) {
-        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+//        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<ApisDataDto>> futures = IntStream.rangeClosed(1, totalPages)
             .mapToObj(pageNo -> executor.submit(() -> fetchData(pageNo)))
             .collect(Collectors.toList());
@@ -86,17 +91,26 @@ public class CompanyService {
             .build(true)
             .toUri();
 
-        return this.restTemplate.getForObject(uri, ApisDataDto.class);
+        final HttpHeaders headers = new HttpHeaders();
+        final HttpEntity entity = new HttpEntity<>(headers);
+
+        try {
+            log.info("Fetch start. - {}", pageNo);
+            return restTemplate.exchange(uri, HttpMethod.GET, entity, ApisDataDto.class).getBody();
+        } catch (UnknownContentTypeException e) {
+            log.warn("Received response with unexpected content type. Retrying with JSON format. - {}", e.getMessage());
+            return restTemplate.exchange(uri, HttpMethod.GET, entity, ApisDataDto.class).getBody();
+        }
     }
 
     private void processResults(List<ApisDataDto> apisDataDtoList) {
         log.info("Total pages fetched: {}", apisDataDtoList.size());
-        int totalSize = 0;
+        List<ApisDataDto.ApisItem> apisItemList = new ArrayList<>();
 
         for (ApisDataDto apisDataDto : apisDataDtoList) {
-            totalSize += apisDataDto.getResponse().getBody().getItems().getItem().size();
+            apisItemList.addAll(apisDataDto.getResponse().getBody().getItems().getItem());
         }
 
-        System.out.println("totalSize = " + totalSize);
+        log.info("totalSize : {}", apisItemList.size());
     }
 }
