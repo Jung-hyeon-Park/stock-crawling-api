@@ -43,7 +43,6 @@ public class CompanyService {
 
             List<ApisDataDto> apisDataDtoList = fetchAllPages(totalPages);
             processResults(apisDataDtoList);
-
         } catch (Exception e) {
             log.error("Error occurred while fetching data.", e);
         }
@@ -70,7 +69,7 @@ public class CompanyService {
             try {
                 ApisDataDto apisDataDto = future.get();
                 apisDataDtoList.add(apisDataDto);
-                log.info("Fetched data for page: {}", apisDataDto.getResponse().getBody().getPageNo());
+                log.info("Fetched data for page: {} - {}", apisDataDto.getResponse().getBody().getPageNo(), apisDataDto.getResponse().getBody().getItems().getItem().size());
             } catch (Exception e) {
                 log.error("Error occurred while fetching data", e);
             }
@@ -112,5 +111,14 @@ public class CompanyService {
         }
 
         log.info("totalSize : {}", apisItemList.size());
+
+        List<String> strnCdList = apisItemList.stream()
+            .map(apisItem -> {
+                log.info("name: {}, code: {}", apisItem.getCorpNm(), apisItem.getSrtnCd());
+                return apisItem.getSrtnCd();
+            })
+            .collect(Collectors.toList());
+
+        // todo - strnCdList를 가지고 네이버 주식 크롤링
     }
 }
